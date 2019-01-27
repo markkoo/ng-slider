@@ -1,0 +1,27 @@
+<div class="carousel">
+  <app-slider #slider>
+    <app-slider-item>
+      <img src="../../assets/images/slide1.jpg" alt="">
+    </app-slider-item>
+    <app-slider-item>
+      <img src="../../assets/images/slide2.jpg" alt="">
+    </app-slider-item>
+    <app-slider-item>
+      <img src="../../assets/images/slide3.jpg" alt="">
+    </app-slider-item>
+    <app-slider-item>
+      <img src="../../assets/images/slide4.jpg" alt="">
+    </app-slider-item>
+    <app-slider-item>
+      <img src="../../assets/images/slide5.jpg" alt="">
+    </app-slider-item>
+  </app-slider>
+  <button [disabled]="slider.canNoLeft" (click)="slider.goByItem('left')">left</button>
+  <button [disabled]="slider.canNoRight" (click)="slider.goByItem('right')">right</button>
+
+  <div class="dotContainer">
+    <div *ngFor="let dot of slider.totalSlide$ | async | sArrayRange; let index = index" (click)="slider.goBySlide(index)" class="dotItem">{{ index }}</div>
+  </div>
+</div>
+
+<router-outlet></router-outlet>
