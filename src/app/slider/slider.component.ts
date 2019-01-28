@@ -1,5 +1,6 @@
 import { Component, OnInit, AfterViewInit, ViewChild, ElementRef, QueryList, ContentChildren } from '@angular/core';
 import { SliderItemComponent } from './slider-item/slider-item.component';
+import { MediaObserver } from '@angular/flex-layout';
 import { ReplaySubject } from 'rxjs';
 
 @Component({
@@ -10,68 +11,94 @@ import { ReplaySubject } from 'rxjs';
 export class SliderComponent implements OnInit, AfterViewInit {
 
   constructor(
-    private hostEl: ElementRef<HTMLElement>
+    private hostEl: ElementRef<HTMLElement>,
+    private mediaObserver: MediaObserver
   ) { }
 
-  itemCount: number | undefined; // = 2
+  @ContentChildren(SliderItemComponent, { read: ElementRef })
+  private slideItemElQueryList: QueryList<ElementRef<HTMLElement>>;
+
+  @ViewChild('sliderRailway', { read: ElementRef })
+  private sliderRailwayEl: ElementRef<HTMLElement>;
+
+  // config
+  scrollForMobile = false;
+  looping = false;
   duration = 300;
-  moveItemCountPerAction = 1;
-  gap: number | undefined; //  = 10
+  paddingLeft = 0; // default 0
+
+  private sliderWidth: number;
+  private gap: number;
+  private sliderAnimation: any;
+
+  slideTranslateXList = [];
+  currentSlideIndex = 0;
+  totalSlide = 1;
   totalSlide$ = new ReplaySubject<number>(1);
 
-  private itemTranslateXList = [];
-  private slideTranslateXList = [];
-  private currentItemIndex = 0;
-  private currentSlideIndex = 0;
-  private itemWidths = [];
+  get isMobile(): boolean {
+    return this.mediaObserver.isActive('xs');
+  }
+
+  goBySlide(direction: number | 'left' | 'right') {
+    let nextItemIndex = null;
+    if (direction === 'left') {
+      nextItemIndex = (this.currentSlideIndex < 0) ? 0 : this.currentSlideIndex - 1;
+    } else if (direction === 'right') {
+      const itemLength = this.slideItemElQueryList.length;
+      nextItemIndex = (this.currentSlideIndex > itemLength - 1) ? itemLength - 1 : this.currentSlideIndex + 1;
+    } else {
+      nextItemIndex = direction;
+    }
+    this.moveTo(nextItemIndex);
+  }
 
   get canNoLeft() {
-    return this.currentItemIndex === 0;
+    return this.currentSlideIndex === 0;
   }
   get canNoRight() {
     if (this.slideItemElQueryList === undefined) {
       return true;
     } else {
-      return (this.currentItemIndex === this.slideItemElQueryList.length - 1) ? true : false;
+      return (this.currentSlideIndex === this.totalSlide - 1) ? true : false;
     }
   }
 
-  @ViewChild('sliderContainer', { read: ElementRef })
-  private sliderContainerEl: ElementRef<HTMLElement>;
-
-  @ContentChildren(SliderItemComponent, { read: ElementRef })
-  private slideItemElQueryList: QueryList<ElementRef<HTMLElement>>;
-
   private moveTo(itemIndex: number) {
-    const currentTranslateX = this.itemTranslateXList[this.currentItemIndex];
-    const nextTranslateX = this.itemTranslateXList[itemIndex];
+    const lastSlideIndex = this.totalSlide - 1;
+    const currentTranslateX = this.slideTranslateXList[this.currentSlideIndex];
+    let jumpBack = false;
+    let nextTranslateX: number;
+    if ((this.currentSlideIndex === lastSlideIndex && itemIndex === 0) && this.totalSlide > 2) {
+      nextTranslateX = this.slideTranslateXList[lastSlideIndex] - this.gap - this.sliderWidth;
+      jumpBack = true;
+    } else if ((this.currentSlideIndex === 0 && itemIndex === lastSlideIndex) && this.totalSlide > 2) {
+      nextTranslateX = this.slideTranslateXList[0] + this.gap + this.sliderWidth;
+      jumpBack = true;
+    } else {
+      nextTranslateX = this.slideTranslateXList[itemIndex];
+    }
+
     console.log('currentTranslateX', currentTranslateX);
     console.log('nextTranslateX', nextTranslateX);
 
-    this.sliderContainerEl.nativeElement.animate([
+    this.sliderAnimation = this.sliderRailwayEl.nativeElement.animate([
       { transform: `translateX(${currentTranslateX}px)` },
       { transform: `translateX(${nextTranslateX}px)` }
     ] as any, {
         duration: this.duration,
         easing: 'ease-in-out',
-        fill: 'forwards'
+        fill: 'none'
       });
 
-    this.currentItemIndex = itemIndex;
-  }
-
-  goByItem(direction: 'left' | 'right', moveItemAcount: number = this.moveItemCountPerAction) {
-    let nextItemIndex = null;
-    if (direction === 'left') {
-      nextItemIndex = (this.currentItemIndex - moveItemAcount < 0) ? 0 : this.currentItemIndex - moveItemAcount;
-    } else {
-      const itemLength = this.slideItemElQueryList.length;
-      nextItemIndex = (this.currentItemIndex + moveItemAcount > itemLength - 1) ? itemLength - 1 : this.currentItemIndex + moveItemAcount;
-    }
-    this.moveTo(nextItemIndex);
-  }
-  goBySlide(slideIndex: number) {
-    
+    this.sliderAnimation.onfinish = () => {
+      if (jumpBack) {
+        this.sliderRailwayEl.nativeElement.style.transform = `translateX(${this.slideTranslateXList[itemIndex]}px)`;
+      } else {
+        this.sliderRailwayEl.nativeElement.style.transform = `translateX(${nextTranslateX}px)`;
+      }
+      this.currentSlideIndex = itemIndex;
+    };
   }
 
   ngOnInit() {
@@ -79,66 +106,137 @@ export class SliderComponent implements OnInit, AfterViewInit {
   }
 
   ngAfterViewInit() {
-    const sliderWidth = this.hostEl.nativeElement.clientWidth;
-    const gap = (this.gap !== undefined) ? this.gap : 0;
+    this.sliderWidth = this.hostEl.nativeElement.clientWidth;
+    this.gap = +window.getComputedStyle(this.slideItemElQueryList.toArray()[0].nativeElement).marginRight.replace('px', '');
 
-    // calc itemWidths
-    if (this.itemCount !== undefined) {
-      const itemWidth = (sliderWidth - ((this.itemCount - 1) * gap)) / this.itemCount;
-      this.slideItemElQueryList.toArray().forEach((elem, index) => {
-        if (this.gap !== undefined && index !== this.slideItemElQueryList.length - 1) {
-          elem.nativeElement.style.marginRight = `${this.gap}px`;
+    // collect all item width
+    const itemWidthWithoutCloneList = this.slideItemElQueryList.toArray().map(
+      item => +window.getComputedStyle(item.nativeElement).width.replace('px', ''));
+
+    // set style width
+    this.slideItemElQueryList.toArray().forEach((elem, index) => {
+      const width = itemWidthWithoutCloneList[index];
+      elem.nativeElement.style.width = `${width}px`;
+      elem.nativeElement.style.flex = 'initial';
+      // if (index !== this.slideItemElQueryList.length - 1) {
+      //   elem.nativeElement.style.marginRight = `${this.gap}px`;
+      // } else {
+      //   elem.nativeElement.style.marginRight = (this.looping) ? `${this.gap}px` : '0';
+      // }
+    });
+
+    // clone
+    const totalItemWidthWithoutClone = itemWidthWithoutCloneList.reduce((itemWidth, result) => {
+      return result + itemWidth;
+    }, 0);
+    if (this.looping && (totalItemWidthWithoutClone <= this.sliderWidth)) {
+      const itemForLoopingList = itemWidthWithoutCloneList.map(itemWidth => ({ width: itemWidth }));
+      let cloneSlideSpace = this.sliderWidth;
+      let totalEndCloneItemWidth = 0;
+      for (let i = 0; i < itemForLoopingList.length; i++) {
+        if (i === 0) {
+          totalEndCloneItemWidth += this.gap;
         }
-        elem.nativeElement.style.width = `${itemWidth}px`;
-        this.itemWidths.push(itemWidth);
-      });
-    } else {
-      this.slideItemElQueryList.toArray().forEach((elem, index) => {
-        if (this.gap !== undefined && index !== this.slideItemElQueryList.length - 1) {
-          elem.nativeElement.style.marginRight = `${this.gap}px`;
+        cloneSlideSpace -= itemForLoopingList[i].width;
+        if (cloneSlideSpace > 0) {
+          cloneAndAppendElem(i);
+          totalEndCloneItemWidth += itemForLoopingList[i].width;
+        } else {
+          cloneAndAppendElem(i);
+          totalEndCloneItemWidth += itemForLoopingList[i].width;
+          break;
         }
-        const itemWidth = +window.getComputedStyle(elem.nativeElement).width.replace('px', '');
-        this.itemWidths.push(itemWidth);
-      });
+      }
+
+      cloneSlideSpace = this.sliderWidth;
+      let totalStartCloneItemWidth = 0;
+      for (let i = itemForLoopingList.length - 1; i >= 0; i--) {
+        if (i === itemForLoopingList.length - 1) {
+          totalStartCloneItemWidth += this.gap;
+        }
+        cloneSlideSpace -= itemForLoopingList[i].width;
+        if (cloneSlideSpace > 0) {
+          cloneAndPrependElem(i);
+          totalStartCloneItemWidth += itemForLoopingList[i].width;
+        } else {
+          cloneAndPrependElem(i);
+          totalStartCloneItemWidth += itemForLoopingList[i].width;
+          break;
+        }
+      }
+
+      this.sliderRailwayEl.nativeElement.style.width = `${totalStartCloneItemWidth + slideContainerWidth + totalEndCloneItemWidth}px`;
+      this.sliderRailwayEl.nativeElement.style.left = `${-totalStartCloneItemWidth}px`;
+      this.sliderRailwayEl.nativeElement.style.position = 'relative';
+      console.log('totalStartCloneItemWidth', totalStartCloneItemWidth);
+      console.log('slideContainerWidth', slideContainerWidth);
+      console.log('totalEndCloneItemWidth', totalEndCloneItemWidth);
     }
 
-    // slideContainerWidth
-    const slideContainerWidth = this.itemWidths.reduce((result, item, index) => {
-      return result += item + gap;
+    // set slide railway
+    const slideContainerWidth = itemWidthWithoutCloneList.reduce((result, itemWidth) => {
+      return result += itemWidth;
     }, 0);
-    this.sliderContainerEl.nativeElement.style.width = slideContainerWidth + 'px';
+    this.sliderRailwayEl.nativeElement.style.width = `${slideContainerWidth}px`;
+    this.sliderRailwayEl.nativeElement.style.display = 'block';
+    this.sliderRailwayEl.nativeElement.style.flexFlow = 'initial';
 
-    // get itemTranslateXList
-    this.itemWidths.forEach((width, index) => {
-      if (index === 0) {
-        this.itemTranslateXList.push(0);
-      } else {
-        this.itemTranslateXList.push(this.itemTranslateXList[index - 1] + this.itemWidths[index - 1] + gap);
+    // set mobile scroll
+    if (this.scrollForMobile && this.isMobile) {
+      this.hostEl.nativeElement.style.overflow = 'auto';
+      if (this.looping) {
+        console.warn('config scrollForMobile can not match with looping');
       }
-    });
-    this.itemTranslateXList = this.itemTranslateXList.map(x => -x);
+      // return;
+    }
 
-    // get slideTranslateXList
-    let totalSlide = 1;
-    let slideSpace = sliderWidth;
-    const items = this.itemWidths.map(itemWidth => ({ width : itemWidth }));
-    while ( items.length > 0 ) {
+    // calc slide translateX
+    let totalItemWidth = 0;
+    let slideSpace = this.sliderWidth;
+    const items = itemWidthWithoutCloneList.map(itemWidth => ({ width: itemWidth }));
+    this.slideTranslateXList.push(0);
+    while (items.length > 0) {
       const item = items.shift();
-      if (slideSpace === sliderWidth) {
+      if (slideSpace === this.sliderWidth || slideSpace - item.width >= 0) {
         slideSpace -= item.width;
+        totalItemWidth += item.width;
       } else {
-        const itemWidthWithGap = gap + item.width;
-        if (slideSpace - itemWidthWithGap >= 0) {
-          slideSpace -= itemWidthWithGap;
-        } else {
-          totalSlide++;
-          slideSpace = sliderWidth;
-          slideSpace -= item.width;
-        }
+        this.slideTranslateXList.push(-totalItemWidth);
+        this.totalSlide++;
+        slideSpace = this.sliderWidth - item.width;
+        totalItemWidth += item.width;
       }
+    }
+    if (this.totalSlide > 1) {
+      const lastTranslateX = (slideContainerWidth - this.sliderWidth) * -1;
+      this.slideTranslateXList.splice(-1, 1, lastTranslateX);
     }
     setTimeout(() => {
-      this.totalSlide$.next(totalSlide);
+      this.totalSlide$.next(this.totalSlide);
     }, 0);
+
+    const cloneAndAppendElem = (index: number) => {
+      const clone = this.slideItemElQueryList.toArray()[index].nativeElement.cloneNode(true);
+      this.sliderRailwayEl.nativeElement.appendChild(clone);
+    };
+    const cloneAndPrependElem = (index: number) => {
+      const clone = this.slideItemElQueryList.toArray()[index].nativeElement.cloneNode(true);
+      this.sliderRailwayEl.nativeElement.prepend(clone);
+    };
+
+
+
+    // padding left
+    if (this.paddingLeft !== 0) {
+      this.sliderRailwayEl.nativeElement.style.marginLeft = `${this.paddingLeft}px`;
+      const adjustLastTranslateX = this.slideTranslateXList[this.slideTranslateXList.length - 1] - (this.paddingLeft * 2);
+      this.slideTranslateXList.splice(-1, 1, adjustLastTranslateX);
+    }
+
+
+
+    console.log('itemWidthWithGapList', itemWidthWithoutCloneList);
+    console.log('this.slideTranslateXList', this.slideTranslateXList);
   }
+
 }
