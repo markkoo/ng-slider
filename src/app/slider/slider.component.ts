@@ -110,14 +110,17 @@ export class SliderComponent implements OnInit, AfterViewInit {
     this.gap = +window.getComputedStyle(this.slideItemElQueryList.toArray()[0].nativeElement).marginRight.replace('px', '');
 
     // collect all item width
-    const itemWidthWithoutCloneList = this.slideItemElQueryList.toArray().map(
-      item => +window.getComputedStyle(item.nativeElement).width.replace('px', ''));
+    const items = this.slideItemElQueryList.toArray().map(
+      item => ({
+        element: item.nativeElement,
+        width: +window.getComputedStyle(item.nativeElement).width.replace('px', '')
+      })
+    );
 
     // set style width
-    this.slideItemElQueryList.toArray().forEach((elem, index) => {
-      const width = itemWidthWithoutCloneList[index];
-      elem.nativeElement.style.width = `${width}px`;
-      elem.nativeElement.style.flex = 'initial';
+    items.forEach((item, index) => {
+      item.element.style.width = `${item.width}px`;
+      item.element.style.flex = 'initial';
       // if (index !== this.slideItemElQueryList.length - 1) {
       //   elem.nativeElement.style.marginRight = `${this.gap}px`;
       // } else {
@@ -125,12 +128,14 @@ export class SliderComponent implements OnInit, AfterViewInit {
       // }
     });
 
+
+
+    const totalItemWidthWithGap = items.reduce((result, item) => result + item.width, 0) + (items.length - 1 * this.gap);
+
+
     // clone
-    const totalItemWidthWithoutClone = itemWidthWithoutCloneList.reduce((itemWidth, result) => {
-      return result + itemWidth;
-    }, 0);
-    if (this.looping && (totalItemWidthWithoutClone <= this.sliderWidth)) {
-      const itemForLoopingList = itemWidthWithoutCloneList.map(itemWidth => ({ width: itemWidth }));
+    if (this.looping && (totalItemWidthWithGap > this.sliderWidth)) {
+      const itemForLoopingList = items.map(itemWidth => ({ width: itemWidth }));
       let cloneSlideSpace = this.sliderWidth;
       let totalEndCloneItemWidth = 0;
       for (let i = 0; i < itemForLoopingList.length; i++) {
@@ -148,95 +153,95 @@ export class SliderComponent implements OnInit, AfterViewInit {
         }
       }
 
-      cloneSlideSpace = this.sliderWidth;
-      let totalStartCloneItemWidth = 0;
-      for (let i = itemForLoopingList.length - 1; i >= 0; i--) {
-        if (i === itemForLoopingList.length - 1) {
-          totalStartCloneItemWidth += this.gap;
-        }
-        cloneSlideSpace -= itemForLoopingList[i].width;
-        if (cloneSlideSpace > 0) {
-          cloneAndPrependElem(i);
-          totalStartCloneItemWidth += itemForLoopingList[i].width;
-        } else {
-          cloneAndPrependElem(i);
-          totalStartCloneItemWidth += itemForLoopingList[i].width;
-          break;
-        }
-      }
+    //   cloneSlideSpace = this.sliderWidth;
+    //   let totalStartCloneItemWidth = 0;
+    //   for (let i = itemForLoopingList.length - 1; i >= 0; i--) {
+    //     if (i === itemForLoopingList.length - 1) {
+    //       totalStartCloneItemWidth += this.gap;
+    //     }
+    //     cloneSlideSpace -= itemForLoopingList[i].width;
+    //     if (cloneSlideSpace > 0) {
+    //       cloneAndPrependElem(i);
+    //       totalStartCloneItemWidth += itemForLoopingList[i].width;
+    //     } else {
+    //       cloneAndPrependElem(i);
+    //       totalStartCloneItemWidth += itemForLoopingList[i].width;
+    //       break;
+    //     }
+    //   }
 
-      this.sliderRailwayEl.nativeElement.style.width = `${totalStartCloneItemWidth + slideContainerWidth + totalEndCloneItemWidth}px`;
-      this.sliderRailwayEl.nativeElement.style.left = `${-totalStartCloneItemWidth}px`;
-      this.sliderRailwayEl.nativeElement.style.position = 'relative';
-      console.log('totalStartCloneItemWidth', totalStartCloneItemWidth);
-      console.log('slideContainerWidth', slideContainerWidth);
-      console.log('totalEndCloneItemWidth', totalEndCloneItemWidth);
-    }
+    //   this.sliderRailwayEl.nativeElement.style.width = `${totalStartCloneItemWidth + slideContainerWidth + totalEndCloneItemWidth}px`;
+    //   this.sliderRailwayEl.nativeElement.style.left = `${-totalStartCloneItemWidth}px`;
+    //   this.sliderRailwayEl.nativeElement.style.position = 'relative';
+    //   console.log('totalStartCloneItemWidth', totalStartCloneItemWidth);
+    //   console.log('slideContainerWidth', slideContainerWidth);
+    //   console.log('totalEndCloneItemWidth', totalEndCloneItemWidth);
+    // }
 
-    // set slide railway
-    const slideContainerWidth = itemWidthWithoutCloneList.reduce((result, itemWidth) => {
-      return result += itemWidth;
-    }, 0);
-    this.sliderRailwayEl.nativeElement.style.width = `${slideContainerWidth}px`;
-    this.sliderRailwayEl.nativeElement.style.display = 'block';
-    this.sliderRailwayEl.nativeElement.style.flexFlow = 'initial';
+    // // set slide railway
+    // const slideContainerWidth = items.reduce((result, itemWidth) => {
+    //   return result += itemWidth;
+    // }, 0);
+    // this.sliderRailwayEl.nativeElement.style.width = `${slideContainerWidth}px`;
+    // this.sliderRailwayEl.nativeElement.style.display = 'block';
+    // this.sliderRailwayEl.nativeElement.style.flexFlow = 'initial';
 
-    // set mobile scroll
-    if (this.scrollForMobile && this.isMobile) {
-      this.hostEl.nativeElement.style.overflow = 'auto';
-      if (this.looping) {
-        console.warn('config scrollForMobile can not match with looping');
-      }
-      // return;
-    }
+    // // set mobile scroll
+    // if (this.scrollForMobile && this.isMobile) {
+    //   this.hostEl.nativeElement.style.overflow = 'auto';
+    //   if (this.looping) {
+    //     console.warn('config scrollForMobile can not match with looping');
+    //   }
+    //   // return;
+    // }
 
-    // calc slide translateX
-    let totalItemWidth = 0;
-    let slideSpace = this.sliderWidth;
-    const items = itemWidthWithoutCloneList.map(itemWidth => ({ width: itemWidth }));
-    this.slideTranslateXList.push(0);
-    while (items.length > 0) {
-      const item = items.shift();
-      if (slideSpace === this.sliderWidth || slideSpace - item.width >= 0) {
-        slideSpace -= item.width;
-        totalItemWidth += item.width;
-      } else {
-        this.slideTranslateXList.push(-totalItemWidth);
-        this.totalSlide++;
-        slideSpace = this.sliderWidth - item.width;
-        totalItemWidth += item.width;
-      }
-    }
-    if (this.totalSlide > 1) {
-      const lastTranslateX = (slideContainerWidth - this.sliderWidth) * -1;
-      this.slideTranslateXList.splice(-1, 1, lastTranslateX);
-    }
-    setTimeout(() => {
-      this.totalSlide$.next(this.totalSlide);
-    }, 0);
+    // // calc slide translateX
+    // let totalItemWidth = 0;
+    // let slideSpace = this.sliderWidth;
+    // const items = items.map(itemWidth => ({ width: itemWidth }));
+    // this.slideTranslateXList.push(0);
+    // while (items.length > 0) {
+    //   const item = items.shift();
+    //   if (slideSpace === this.sliderWidth || slideSpace - item.width >= 0) {
+    //     slideSpace -= item.width;
+    //     totalItemWidth += item.width;
+    //   } else {
+    //     this.slideTranslateXList.push(-totalItemWidth);
+    //     this.totalSlide++;
+    //     slideSpace = this.sliderWidth - item.width;
+    //     totalItemWidth += item.width;
+    //   }
+    // }
+    // if (this.totalSlide > 1) {
+    //   const lastTranslateX = (slideContainerWidth - this.sliderWidth) * -1;
+    //   this.slideTranslateXList.splice(-1, 1, lastTranslateX);
+    // }
+    // setTimeout(() => {
+    //   this.totalSlide$.next(this.totalSlide);
+    // }, 0);
 
-    const cloneAndAppendElem = (index: number) => {
-      const clone = this.slideItemElQueryList.toArray()[index].nativeElement.cloneNode(true);
-      this.sliderRailwayEl.nativeElement.appendChild(clone);
-    };
-    const cloneAndPrependElem = (index: number) => {
-      const clone = this.slideItemElQueryList.toArray()[index].nativeElement.cloneNode(true);
-      this.sliderRailwayEl.nativeElement.prepend(clone);
-    };
-
-
-
-    // padding left
-    if (this.paddingLeft !== 0) {
-      this.sliderRailwayEl.nativeElement.style.marginLeft = `${this.paddingLeft}px`;
-      const adjustLastTranslateX = this.slideTranslateXList[this.slideTranslateXList.length - 1] - (this.paddingLeft * 2);
-      this.slideTranslateXList.splice(-1, 1, adjustLastTranslateX);
-    }
+    // const cloneAndAppendElem = (index: number) => {
+    //   const clone = this.slideItemElQueryList.toArray()[index].nativeElement.cloneNode(true);
+    //   this.sliderRailwayEl.nativeElement.appendChild(clone);
+    // };
+    // const cloneAndPrependElem = (index: number) => {
+    //   const clone = this.slideItemElQueryList.toArray()[index].nativeElement.cloneNode(true);
+    //   this.sliderRailwayEl.nativeElement.prepend(clone);
+    // };
 
 
 
-    console.log('itemWidthWithGapList', itemWidthWithoutCloneList);
-    console.log('this.slideTranslateXList', this.slideTranslateXList);
+    // // padding left
+    // if (this.paddingLeft !== 0) {
+    //   this.sliderRailwayEl.nativeElement.style.marginLeft = `${this.paddingLeft}px`;
+    //   const adjustLastTranslateX = this.slideTranslateXList[this.slideTranslateXList.length - 1] - (this.paddingLeft * 2);
+    //   this.slideTranslateXList.splice(-1, 1, adjustLastTranslateX);
+    // }
+
+
+
+    // console.log('itemWidthWithGapList', items);
+    // console.log('this.slideTranslateXList', this.slideTranslateXList);
   }
 
 }
